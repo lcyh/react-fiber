@@ -76,8 +76,8 @@ export function updateHostText(currentFiber) {
   }
 }
 function updateHost(currentFiber) {
-  if (!currentFiber.stateNode) {
-    currentFiber.stateNode = createDOM(currentFiber); //先创建真实的DOM节点
+  if (!currentFiber.statNode) {
+    currentFiber.statNode = createDOM(currentFiber); //先创建真实的DOM节点
   }
   const newChildren = currentFiber.props.children;
   reconcileChildren(currentFiber, newChildren);
@@ -87,13 +87,13 @@ function createDOM(currentFiber) {
     return document.createTextNode(currentFiber.props.text);
   }
   // 根据虚拟DOM接待创建 真实DOM元素
-  const stateNode = document.createElement(currentFiber.type);
+  const statNode = document.createElement(currentFiber.type);
   // 给当前真实DOM添加props属性
-  updateDOM(stateNode, {}, currentFiber.props);
-  return stateNode;
+  updateDOM(statNode, {}, currentFiber.props);
+  return statNode;
 }
-function updateDOM(stateNode, oldProps, newProps) {
-  setProps(stateNode, oldProps, newProps);
+function updateDOM(statNode, oldProps, newProps) {
+  setProps(statNode, oldProps, newProps);
 }
 export function updateHostRoot(currentFiber) {
   const newChildren = currentFiber.props.children;
@@ -115,7 +115,7 @@ export function reconcileChildren(currentFiber, newChildren) {
       tag, //原生DOM组件
       type: newChild.type, //具体的元素类型
       props: newChild.props, //新的属性对象
-      statNode: null, //第一次创建 stateNode肯定是空的
+      statNode: null, //第一次创建 statNode肯定是空的
       return: currentFiber, //父Fiber
       effectTag: PLACEMENT, //副作用标识
       nextEffect: null,
@@ -133,6 +133,25 @@ export function reconcileChildren(currentFiber, newChildren) {
     newChildIndex++;
   }
 }
+function commitRoot() {
+  let currentFiber = workInProgressRoot.firstEffect;
+  while (currentFiber) {
+    commitWork(currentFiber);
+    currentFiber = currentFiber.nextEffect;
+  }
+  workInProgressRoot = null;
+}
+function commitWork(currentFiber) {
+  if (!currentFiber) return;
+  let returnFiber = currentFiber.return;
+  let domReturn = returnFiber.statNode;
+  if (currentFiber.effectTag === PLACEMENT && currentFiber.statNode != null) {
+    //新增加节点
+    let nextFiber = currentFiber;
+    domReturn.appendChild(nextFiber.statNode);
+  }
+  currentFiber.effectTag = null;
+}
 function workLoop(deadline) {
   let shouldYeild = false;
   while (nextUnitOfWork && !shouldYeild) {
@@ -142,9 +161,12 @@ function workLoop(deadline) {
     // 交出浏览器控制权
     shouldYeild = deadline.timeRemaining() < 1;
   }
+  //不管有没有任务，都请求再次调度 每一帧都要执行一次workLoop
   // 如果没有下一个工作单元，并且当前渲染树存在，则进行提交effect-list
-  if (!nextUnitOfWork) {
-    // commitRoot()
+  if (!nextUnitOfWork && workInProgressRoot) {
+    //如果时间片到期后还有任务没有完成，就需要请求浏览器再次调度
+    console.log("render阶段结束");
+    commitRoot();
   }
   // 如果有下一个工作单元，但是当前帧没有时间了，重新向浏览器发起请求
   requestIdleCallback(workLoop);
