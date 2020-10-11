@@ -3,7 +3,7 @@ import { scheduleRoot } from "./schedule";
 function render(element, container) {
   let rootFiber = {
     tag: TAG_ROOT,
-    statNode: container,
+    stateNode: container,
     props: {
       children: [element],
     },
