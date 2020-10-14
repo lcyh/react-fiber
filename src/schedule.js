@@ -7,7 +7,9 @@ import {
   PLACEMENT,
   UPDATE,
   DELETION,
+  TAG_ClASS,
 } from "./constants";
+import { UpdateQueue } from "./updateQueue";
 
 let workInProgressRoot = null; //正在渲染中的根Fiber
 let nextUnitOfWork = null; //下一个工作单元
@@ -18,16 +20,24 @@ export function scheduleRoot(rootFiber) {
   if (currentRoot && currentRoot.alternate) {
     //偶数次更新
     workInProgressRoot = currentRoot.alternate;
-    workInProgressRoot.firstEffect = workInProgressRoot.lastEffect = workInProgressRoot.nextEffect = null;
-    workInProgressRoot.props = rootFiber.props;
+    if (rootFiber) workInProgressRoot.props = rootFiber.props;
     workInProgressRoot.alternate = currentRoot;
   } else if (currentRoot) {
-    rootFiber.alternate = currentRoot;
-    workInProgressRoot = rootFiber;
+    //说明至少已经渲染过一次了 第一次更新
+    if (rootFiber) {
+      rootFiber.alternate = currentRoot;
+      workInProgressRoot = rootFiber;
+    } else {
+      workInProgressRoot = {
+        ...currentRoot,
+        alternate: currentRoot,
+      };
+    }
   } else {
     // 第一次渲染(第一次创建)
     workInProgressRoot = rootFiber;
   }
+  workInProgressRoot.firstEffect = workInProgressRoot.lastEffect = workInProgressRoot.nextEffect = null;
   //把当前fiber树设置为nextUnitOfWork开始进行调度
   nextUnitOfWork = workInProgressRoot;
 }
@@ -84,7 +94,26 @@ function beginWork(currentFiber) {
     //如果是原生DOM节点
   } else if (currentFiber.tag === TAG_HOST) {
     updateHost(currentFiber);
+  } else if (currentFiber.tag === TAG_ClASS) {
+    //如果是类组件
+    updateClassComponent(currentFiber);
   }
+}
+function updateClassComponent(currentFiber) {
+  // fiber双向指向
+  if (!currentFiber.stateNode) {
+    //类组件 stateNode 组件的实例
+    currentFiber.stateNode = new currentFiber.type(currentFiber.props); //class组件的实例
+    currentFiber.stateNode.internalFiber = currentFiber;
+    currentFiber.updateQueue = new UpdateQueue();
+  }
+  //给组件实例的state赋值
+  currentFiber.stateNode.state = currentFiber.updateQueue.forceUpdate(
+    currentFiber.stateNode.state
+  );
+  let newElement = currentFiber.stateNode.render();
+  let newChildren = [newElement];
+  reconcileChildren(currentFiber, newChildren);
 }
 function updateHostText(currentFiber) {
   if (!currentFiber.stateNode) {
@@ -111,7 +140,9 @@ function createDOM(currentFiber) {
   }
 }
 function updateDOM(stateNode, oldProps, newProps) {
-  setProps(stateNode, oldProps, newProps);
+  //类组件的stateNode是实例对象，不是DOM，需要排除
+  if (stateNode && stateNode.setAttribute)
+    setProps(stateNode, oldProps, newProps);
 }
 function updateHostRoot(currentFiber) {
   const newChildren = currentFiber.props.children;
@@ -133,7 +164,13 @@ function reconcileChildren(currentFiber, newChildren) {
     let newFiber; //新的Fiber
     const sameType = oldFiber && newChild && oldFiber.type === newChild.type;
     let tag;
-    if (newChild && newChild.type == ELEMENT_TEXT) {
+    if (
+      newChild &&
+      typeof newChild.type == "function" &&
+      newChild.type.prototype.isReactComponent
+    ) {
+      tag = TAG_ClASS; //这是一个文本节点
+    } else if (newChild && newChild.type == ELEMENT_TEXT) {
       tag = TAG_TEXT; //这是一个文本节点
     } else if (newChild && typeof newChild.type === "string") {
       tag = TAG_HOST; //如果是type是字符串，那么这是一个原生DOM节点 "A1" div
@@ -146,6 +183,7 @@ function reconcileChildren(currentFiber, newChildren) {
         newFiber.props = newChild.props;
         newFiber.alternate = oldFiber;
         newFiber.effectTag = UPDATE;
+        newFiber.updateQueue = oldFiber.updateQueue || new UpdateQueue();
         newFiber.nextEffect = null;
       } else {
         newFiber = {
@@ -156,6 +194,7 @@ function reconcileChildren(currentFiber, newChildren) {
           return: currentFiber, //父Fiber returnFiber
           alternate: oldFiber, //让新的fiber的alternate指向老的fiber节点
           effectTag: UPDATE, //副作用标识 render我们要会收集副作用 增加 删除 更新
+          updateQueue: oldFiber.updateQueue || new UpdateQueue(),
           nextEffect: null, //effect list 也是一个单链表
         };
       }
@@ -170,6 +209,7 @@ function reconcileChildren(currentFiber, newChildren) {
           return: currentFiber, //父Fiber returnFiber
           effectTag: PLACEMENT, //副作用标识 render我们要会收集副作用 增加 删除 更新
           nextEffect: null, //effect list 也是一个单链表
+          updateQueue: new UpdateQueue(),
           //effect list顺序和 完成顺序是一样的，但是节点只放那些出钱的人的fiber节点，不出钱绕过去
         };
       }
@@ -212,14 +252,29 @@ function commitRoot() {
 function commitWork(currentFiber) {
   if (!currentFiber) return;
   let returnFiber = currentFiber.return;
+  while (
+    returnFiber.tag !== TAG_HOST &&
+    returnFiber.tag !== TAG_ROOT &&
+    returnFiber.tag !== TAG_TEXT
+  ) {
+    returnFiber = returnFiber.return;
+  }
   let domReturn = returnFiber.stateNode;
   if (currentFiber.effectTag === PLACEMENT && currentFiber.stateNode != null) {
     //新增加节点
     let nextFiber = currentFiber;
+    // 如果是类组件，找它的child
+    /*  if (nextFiber.tag === TAG_CLASS) {
+                    return;
+                } */
+    // 如果要挂载的节点不是DOM节点，比如说是类组件Fiber,一直找第一个儿子，直到找到一个真实DOM节点为止
+    while (nextFiber.tag !== TAG_HOST && nextFiber.tag !== TAG_TEXT) {
+      nextFiber = currentFiber.child;
+    }
     domReturn.appendChild(nextFiber.stateNode);
   } else if (currentFiber.effectTag === DELETION) {
     //如果是删除则删除并返回
-    return commitDeletion(currentFiber, domReturn);
+    commitDeletion(currentFiber, domReturn);
   } else if (currentFiber.effectTag === UPDATE) {
     //如果是更新
     if (currentFiber.type === ELEMENT_TEXT) {

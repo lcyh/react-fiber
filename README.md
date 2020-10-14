@@ -18,9 +18,8 @@
 - beginWork
   - 从根 root fiber 开始创建真实 DOM
   - 从根 fiber 开始创建 fiber 子树，并且设置当前 DOM 的 props 属性
-  - 创建的 fiber 子树里有， tag,type,props,child,sibling,return,statNode,effectTag,可以根据 child,sibling,return 这三个属性，找到对应的父子兄弟 fiber,解决 react15，深度递归比遍历不能随时中断(或者是说中断后只能重新开始遍历，找不到之前中断的节点位置，影响性能)；
+  - 创建的 fiber 子树里有， tag,type,props,child,sibling,alternate,return,statNode,effectTag,可以根据 child,sibling,return 这三个属性，找到对应的父子兄弟 fiber,解决 react15，深度递归比遍历不能随时中断(或者是说中断后只能重新开始遍历，找不到之前中断的节点位置，影响性能)；
 - completeWork
-
   - 根据 child，sibling,return 生成对应的 effect list 副作用链表；
   - effect list 主要有三个指针，firstEffect,nextEffect,lastEffect 组成的单项链表；
   - effect list 的顺序是 fiber 创建完成的顺序；
@@ -44,3 +43,12 @@
 ### commit 阶段
 
 - 根据 currentFiber.effectTag 进行 fiber 树的增加，删除，更新真实 DOM 操作；
+
+### 类组件(Class 组件)
+
+- setState(),批量更新
+  - setState(payload),payload 是对象或者函数;
+  - payload 会被 Update 包装管理，每个 payload 被一个 new Update(payload)包装管理；
+  - 调用 setState(),内部会调用 enqueueUpdate()方法,生成一个 updateQueue 进行对 state 状态管理的单项链表；
+  - state 状态管理的单项链表是 this.firstUpdate,this.nextUpdate,this.lastUpdate 三个指针形成，通过 while 循环将多个 payload 合并生成新的 state;
+  - 调用 setState(),每部会调用 scheduleRoot(),从 root fiber 开始更新渲染整个 fiber 树,从而将新的 state 渲染到页面上；

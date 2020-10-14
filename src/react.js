@@ -1,4 +1,6 @@
 import { ELEMENT_TEXT } from "./constants";
+import { scheduleRoot } from "./schedule";
+import { Update, UpdateQueue } from "./updateQueue";
 
 function createElement(type, config, ...children) {
   delete config.__self;
@@ -17,7 +19,21 @@ function createElement(type, config, ...children) {
     },
   };
 }
+class Component {
+  constructor(props) {
+    this.props = props;
+  }
+  setState(payload) {
+    // setState的参数 payload可能是对象或函数，payload被 new Update包装管理
+    // enqueueUpdata收集 new Update实例，也就是收集 payload
+    this.internalFiber.updateQueue.enqueueUpdate(new Update(payload));
+    //调用setState,会重新从root fiber更新
+    scheduleRoot();
+  }
+}
+Component.prototype.isReactComponent = {};
 const React = {
   createElement,
+  Component,
 };
 export default React;
