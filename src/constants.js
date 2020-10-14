@@ -5,6 +5,7 @@ export const TAG_ROOT = Symbol.for("TAG_ROOT");
 export const TAG_TEXT = Symbol.for("TAG_TEXT");
 export const TAG_HOST = Symbol.for("TAG_HOST");
 export const TAG_ClASS = Symbol.for("TAG_ClASS");
+export const TAG_FUNCTION = Symbol.for("TAG_FUNCTION");
 
 //插入fiber节点
 export const PLACEMENT = Symbol.for("PLACEMENT");

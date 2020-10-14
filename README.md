@@ -52,3 +52,13 @@
   - 调用 setState(),内部会调用 enqueueUpdate()方法,生成一个 updateQueue 进行对 state 状态管理的单项链表；
   - state 状态管理的单项链表是 this.firstUpdate,this.nextUpdate,this.lastUpdate 三个指针形成，通过 while 循环将多个 payload 合并生成新的 state;
   - 调用 setState(),每部会调用 scheduleRoot(),从 root fiber 开始更新渲染整个 fiber 树,从而将新的 state 渲染到页面上；
+
+### 函数式组件 hooks
+
+- useReducer
+  let [state,dispatch]=useReducer(reducer,initialState);
+  - state 是 initialState 的值
+  - dispatch(action):1.内部调用 reducer()函数，let newState=reducer(action,initialState),返回新的 state;2.调用 forceUpdate(),新的 state 替换旧的 state,state=newState;
+
+* useState 是 useReducer 的语法糖
+  - return useReducer(null,initialState);

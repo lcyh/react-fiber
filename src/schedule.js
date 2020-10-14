@@ -8,13 +8,16 @@ import {
   UPDATE,
   DELETION,
   TAG_ClASS,
+  TAG_FUNCTION,
 } from "./constants";
-import { UpdateQueue } from "./updateQueue";
+import { Update, UpdateQueue } from "./updateQueue";
 
 let workInProgressRoot = null; //正在渲染中的根Fiber
 let nextUnitOfWork = null; //下一个工作单元
 let currentRoot = null; //当前的根Fiber
 let deletions = []; //要删除的fiber节点
+let workInProgressFiber = null; //正在工作中的fiber
+let hookIndex = 0; //hook索引
 
 export function scheduleRoot(rootFiber) {
   if (currentRoot && currentRoot.alternate) {
@@ -97,7 +100,50 @@ function beginWork(currentFiber) {
   } else if (currentFiber.tag === TAG_ClASS) {
     //如果是类组件
     updateClassComponent(currentFiber);
+  } else if (currentFiber.tag === TAG_FUNCTION) {
+    //如果是类组件
+    updateFunctionComponent(currentFiber);
   }
+}
+//scheduleRoot时 会从根fiber开始创建或者更新 fiber树(包括文件节点的fiber,DOM元素的fiber,类组件、函数组件的 fiber)
+function updateFunctionComponent(currentFiber) {
+  workInProgressFiber = currentFiber; //保存函数组件的 fiber
+  hookIndex = 0; // 保存函数组件的 hook索引
+  workInProgressFiber.hooks = []; //用来存放改函数组件里 使用了的 hook钩子,hook钩子会依次放在数组里管理
+  let newChildren = [currentFiber.type(currentFiber.props)];
+  reconcileChildren(currentFiber, newChildren);
+}
+//hooks
+export function useReducer(reducer, initialValue) {
+  //至少更新过一次后才会有 alternate
+  let oldHook =
+    workInProgressFiber.alternate &&
+    workInProgressFiber.alternate.hooks &&
+    workInProgressFiber.alternate.hooks[hookIndex];
+  let newHook = oldHook;
+  if (oldHook) {
+    oldHook.state = oldHook.updateQueue.forceUpdate(oldHook.state);
+  } else {
+    newHook = {
+      state: initialValue,
+      updateQueue: new UpdateQueue(),
+    };
+  }
+  // dispatch：1.拿到reducer()返回的新state,2.将新的state渲染到页面里
+  const dispatch = (action) => {
+    // 收集reducer(),返回的新state值
+    newHook.updateQueue.enqueueUpdate(
+      new Update(reducer ? reducer(newHook.state, action) : action)
+    );
+    // 将新的state值，渲染更新到页面里, fiber树里
+    scheduleRoot(); //会调用 forceUpdate()
+  };
+  workInProgressFiber.hooks[hookIndex++] = newHook;
+  return [newHook.state, dispatch];
+}
+//useState 钩子
+export function useState(initialValue) {
+  return useReducer(null, initialValue);
 }
 function updateClassComponent(currentFiber) {
   // fiber双向指向
@@ -169,7 +215,9 @@ function reconcileChildren(currentFiber, newChildren) {
       typeof newChild.type == "function" &&
       newChild.type.prototype.isReactComponent
     ) {
-      tag = TAG_ClASS; //这是一个文本节点
+      tag = TAG_ClASS; //这是一个类组件
+    } else if (newChild && typeof newChild.type == "function") {
+      tag = TAG_FUNCTION; //这是一个函数组件
     } else if (newChild && newChild.type == ELEMENT_TEXT) {
       tag = TAG_TEXT; //这是一个文本节点
     } else if (newChild && typeof newChild.type === "string") {
